@@ -28,15 +28,6 @@ print("Libraries imported successfully!")
 print(f"PyTorch version: {torch.__version__}")
 print(f"CUDA available: {torch.cuda.is_available()}")
 
-# Set random seeds
-def set_seed(seed=42):
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-
-set_seed(42)
-print("Random seeds set to 42")
-
 # ==============================================================================
 # Configuration
 # ==============================================================================
@@ -74,6 +65,19 @@ print(f"  Model: {config.MODEL_NAME}")
 print(f"  Device: {config.DEVICE}")
 print(f"  Batch Size: {config.BATCH_SIZE}")
 print(f"  Epochs: {config.EPOCHS}")
+
+
+# Set random seeds
+def set_seed(seed=42):
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+set_seed(42)
+print("Random seeds set to 42")
+
 
 # Verify model path exists
 if not os.path.exists(config.MODEL_NAME):

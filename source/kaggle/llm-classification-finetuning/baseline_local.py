@@ -23,18 +23,10 @@ import warnings
 import os
 warnings.filterwarnings('ignore')
 
-print("Libraries imported successfully!")
-print(f"PyTorch version: {torch.__version__}")
-print(f"CUDA available: {torch.cuda.is_available()}")
-
-# Set random seeds
-def set_seed(seed=42):
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-
-set_seed(42)
-print("Random seeds set to 42")
+# def set_seed(seed=42):
+#     np.random.seed(seed)
+#     torch.manual_seed(seed)
+#     torch.cuda.manual_seed_all(seed)
 
 # ==============================================================================
 # Configuration
@@ -61,55 +53,12 @@ class Config:
     SUBMISSION_PATH = os.path.join(OUTPUT_DIR, "submission.csv")
     MODEL_SAVE_PATH = os.path.join(OUTPUT_DIR, "best_model.pt")
 
-config = Config()
-
-# Create output directory if it doesn't exist
-os.makedirs(config.OUTPUT_DIR, exist_ok=True)
-
-print(f"\nConfiguration:")
-print(f"  Model: {config.MODEL_NAME}")
-print(f"  Device: {config.DEVICE}")
-print(f"  Batch Size: {config.BATCH_SIZE}")
-print(f"  Epochs: {config.EPOCHS}")
-
-# Verify model path exists
-if not os.path.exists(config.MODEL_NAME):
-    print(f"\n⚠ ERROR: Model path not found: {config.MODEL_NAME}")
-    print("Please run: python download_model.py")
-    exit(1)
-else:
-    print(f"✓ Model path exists: {config.MODEL_NAME}")
-
-# Verify data paths exist
-for path_name, path in [("Train", config.TRAIN_DATA_PATH),
-                         ("Test", config.TEST_DATA_PATH),
-                         ("Sample submission", config.SAMPLE_SUBMISSION_PATH)]:
-    if not os.path.exists(path):
-        print(f"\n⚠ ERROR: {path_name} data not found: {path}")
-        exit(1)
-    else:
-        print(f"✓ {path_name} data exists: {path}")
-
-# ==============================================================================
-# Load Data
-# ==============================================================================
-print("\nLoading data...")
-train_df = pd.read_csv(config.TRAIN_DATA_PATH)
-test_df = pd.read_csv(config.TEST_DATA_PATH)
-sample_submission = pd.read_csv(config.SAMPLE_SUBMISSION_PATH)
-
-print(f"Train data shape: {train_df.shape}")
-print(f"Test data shape: {test_df.shape}")
-
-# Split train/validation
-train_data, val_data = train_test_split(
-    train_df,
-    test_size=0.1,
-    random_state=42,
-    stratify=train_df['winner_model_a'].astype(str) + train_df['winner_model_b'].astype(str)
-)
-print(f"Train size: {len(train_data)}, Validation size: {len(val_data)}")
-
+def set_seed(seed=42):
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 # ==============================================================================
 # Dataset Class
 # ==============================================================================
@@ -173,31 +122,6 @@ class LLMComparisonModel(nn.Module):
         probs = self.softmax(logits)
         return probs
 
-print("Model class defined")
-
-# ==============================================================================
-# Initialize Model
-# ==============================================================================
-print(f"\nLoading tokenizer and model from: {config.MODEL_NAME}")
-tokenizer = AutoTokenizer.from_pretrained(config.MODEL_NAME)
-model = LLMComparisonModel(config.MODEL_NAME)
-model.to(config.DEVICE)
-print(f"✓ Model loaded on: {config.DEVICE}")
-print(f"✓ Model parameters: {sum(p.numel() for p in model.parameters()):,}")
-
-# ==============================================================================
-# Create Data Loaders
-# ==============================================================================
-train_dataset = LLMComparisonDataset(train_data, tokenizer, config.MAX_LENGTH)
-val_dataset = LLMComparisonDataset(val_data, tokenizer, config.MAX_LENGTH)
-test_dataset = LLMComparisonDataset(test_df, tokenizer, config.MAX_LENGTH, is_test=True)
-
-train_loader = DataLoader(train_dataset, batch_size=config.BATCH_SIZE, shuffle=True, num_workers=2)
-val_loader = DataLoader(val_dataset, batch_size=config.BATCH_SIZE, shuffle=False, num_workers=2)
-test_loader = DataLoader(test_dataset, batch_size=config.BATCH_SIZE, shuffle=False, num_workers=2)
-
-print(f"✓ Train batches: {len(train_loader)}, Val batches: {len(val_loader)}, Test batches: {len(test_loader)}")
-
 # ==============================================================================
 # Training Functions
 # ==============================================================================
@@ -245,101 +169,165 @@ def validate(model, dataloader, device):
 
     return loss, predictions, actuals
 
-print("Training functions defined")
+def main():
+    """
+    Main function to run the training and prediction pipeline.
+    """
+    print("Libraries imported successfully!")
+    print(f"PyTorch version: {torch.__version__}")
+    print(f"CUDA available: {torch.cuda.is_available()}")
 
-# ==============================================================================
-# Setup Optimizer and Scheduler
-# ==============================================================================
-optimizer = AdamW(model.parameters(), lr=config.LEARNING_RATE)
-total_steps = len(train_loader) * config.EPOCHS
-scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=0, num_training_steps=total_steps)
+    set_seed(42)
+    print("Random seeds set to 42")
 
-print(f"Optimizer: AdamW (lr={config.LEARNING_RATE})")
-print(f"Total training steps: {total_steps}")
+    config = Config()
+    os.makedirs(config.OUTPUT_DIR, exist_ok=True)
 
-# ==============================================================================
-# Training Loop
-# ==============================================================================
-print("\n" + "="*60)
-print("STARTING TRAINING")
-print("="*60)
+    print(f"\nConfiguration:")
+    print(f"  Model: {config.MODEL_NAME}")
+    print(f"  Device: {config.DEVICE}")
+    print(f"  Batch Size: {config.BATCH_SIZE}")
+    print(f"  Epochs: {config.EPOCHS}")
 
-best_val_loss = float('inf')
+    if not os.path.exists(config.MODEL_NAME):
+        print(f"\n⚠ ERROR: Model path not found: {config.MODEL_NAME}")
+        print("Please run: python download_model.py")
+        exit(1)
+    else:
+        print(f"✓ Model path exists: {config.MODEL_NAME}")
 
-for epoch in range(config.EPOCHS):
-    print(f"\nEpoch {epoch + 1}/{config.EPOCHS}")
-    print("-" * 60)
+    for path_name, path in [("Train", config.TRAIN_DATA_PATH),
+                             ("Test", config.TEST_DATA_PATH),
+                             ("Sample submission", config.SAMPLE_SUBMISSION_PATH)]:
+        if not os.path.exists(path):
+            print(f"\n⚠ ERROR: {path_name} data not found: {path}")
+            exit(1)
+        else:
+            print(f"✓ {path_name} data exists: {path}")
 
-    train_loss = train_epoch(model, train_loader, optimizer, scheduler, config.DEVICE)
-    print(f"Training loss: {train_loss:.4f}")
+    print("\nLoading data...")
+    train_df = pd.read_csv(config.TRAIN_DATA_PATH)
+    test_df = pd.read_csv(config.TEST_DATA_PATH)
+    sample_submission = pd.read_csv(config.SAMPLE_SUBMISSION_PATH)
 
-    val_loss, val_preds, val_actuals = validate(model, val_loader, config.DEVICE)
-    print(f"Validation loss: {val_loss:.4f}")
+    print(f"Train data shape: {train_df.shape}")
+    print(f"Test data shape: {test_df.shape}")
 
-    if val_loss < best_val_loss:
-        best_val_loss = val_loss
-        torch.save(model.state_dict(), config.MODEL_SAVE_PATH)
-        print(f"✓ Model saved with validation loss: {val_loss:.4f}")
+    train_data, val_data = train_test_split(
+        train_df,
+        test_size=0.1,
+        random_state=42,
+        stratify=train_df['winner_model_a'].astype(str) + train_df['winner_model_b'].astype(str)
+    )
+    print(f"Train size: {len(train_data)}, Validation size: {len(val_data)}")
+    print("Dataset class defined")
 
-print("\n" + "="*60)
-print(f"TRAINING COMPLETED! Best validation loss: {best_val_loss:.4f}")
-print("="*60)
+    print("Model class defined")
 
-# ==============================================================================
-# Load Best Model and Make Predictions
-# ==============================================================================
-print("\nLoading best model for inference...")
-model.load_state_dict(torch.load(config.MODEL_SAVE_PATH))
-model.eval()
-print("✓ Best model loaded")
+    print(f"\nLoading tokenizer and model from: {config.MODEL_NAME}")
+    tokenizer = AutoTokenizer.from_pretrained(config.MODEL_NAME)
+    model = LLMComparisonModel(config.MODEL_NAME)
+    model.to(config.DEVICE)
+    print(f"✓ Model loaded on: {config.DEVICE}")
+    print(f"✓ Model parameters: {sum(p.numel() for p in model.parameters()):,}")
 
-print("\nMaking predictions on test data...")
-predictions = []
+    train_dataset = LLMComparisonDataset(train_data, tokenizer, config.MAX_LENGTH)
+    val_dataset = LLMComparisonDataset(val_data, tokenizer, config.MAX_LENGTH)
+    test_dataset = LLMComparisonDataset(test_df, tokenizer, config.MAX_LENGTH, is_test=True)
 
-with torch.no_grad():
-    for batch in tqdm(test_loader, desc="Predicting"):
-        input_ids = batch['input_ids'].to(config.DEVICE)
-        attention_mask = batch['attention_mask'].to(config.DEVICE)
-        outputs = model(input_ids, attention_mask)
-        predictions.append(outputs.cpu().numpy())
+    # Use num_workers=0 for Windows compatibility
+    # num_workers = 0 if os.name == 'nt' else 2
+    num_workers = 2 if torch.cuda.is_available() and os.name != 'nt' else 0
+    train_loader = DataLoader(train_dataset, batch_size=config.BATCH_SIZE, shuffle=True, num_workers=num_workers)
+    val_loader = DataLoader(val_dataset, batch_size=config.BATCH_SIZE, shuffle=False, num_workers=num_workers)
+    test_loader = DataLoader(test_dataset, batch_size=config.BATCH_SIZE, shuffle=False, num_workers=num_workers)
 
-predictions = np.vstack(predictions)
-print(f"✓ Predictions shape: {predictions.shape}")
+    print(f"✓ Train batches: {len(train_loader)}, Val batches: {len(val_loader)}, Test batches: {len(test_loader)}")
+    print("Training functions defined")
 
-# ==============================================================================
-# Create Submission File
-# ==============================================================================
-submission = sample_submission.copy()
-submission['winner_model_a'] = predictions[:, 0]
-submission['winner_model_b'] = predictions[:, 1]
-submission['winner_tie'] = predictions[:, 2]
+    optimizer = AdamW(model.parameters(), lr=config.LEARNING_RATE)
+    total_steps = len(train_loader) * config.EPOCHS
+    scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=0, num_training_steps=total_steps)
 
-submission.to_csv(config.SUBMISSION_PATH, index=False)
+    print(f"Optimizer: AdamW (lr={config.LEARNING_RATE})")
+    print(f"Total training steps: {total_steps}")
 
-print("\n" + "="*60)
-print("SUBMISSION FILE CREATED")
-print("="*60)
-print(f"Saved to: {config.SUBMISSION_PATH}")
-print(f"Submission shape: {submission.shape}")
-print(f"\nFirst few predictions:")
-print(submission.head(10))
+    print("\n" + "="*60)
+    print("STARTING TRAINING")
+    print("="*60)
 
-# Verify probabilities sum to 1
-prob_sums = submission[['winner_model_a', 'winner_model_b', 'winner_tie']].sum(axis=1)
-print(f"\nProbability sums check:")
-print(f"  Min: {prob_sums.min():.6f}")
-print(f"  Max: {prob_sums.max():.6f}")
-print(f"  Mean: {prob_sums.mean():.6f}")
+    best_val_loss = float('inf')
 
-if abs(prob_sums.mean() - 1.0) < 0.001:
-    print("\n✓ All probabilities sum to ~1.0. Submission is valid!")
-else:
-    print("\n⚠ WARNING: Probabilities don't sum to 1.0!")
+    for epoch in range(config.EPOCHS):
+        print(f"\nEpoch {epoch + 1}/{config.EPOCHS}")
+        print("-" * 60)
 
-print("\n" + "="*60)
-print("LOCAL TRAINING COMPLETED!")
-print("="*60)
-print("\nNext steps:")
-print("1. Review the results in outputs/submission.csv")
-print("2. If satisfied, copy baseline.py to Kaggle notebook")
-print("3. Submit the Kaggle notebook to the competition")
+        train_loss = train_epoch(model, train_loader, optimizer, scheduler, config.DEVICE)
+        print(f"Training loss: {train_loss:.4f}")
+
+        val_loss, val_preds, val_actuals = validate(model, val_loader, config.DEVICE)
+        print(f"Validation loss: {val_loss:.4f}")
+
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            torch.save(model.state_dict(), config.MODEL_SAVE_PATH)
+            print(f"✓ Model saved with validation loss: {val_loss:.4f}")
+
+    print("\n" + "="*60)
+    print(f"TRAINING COMPLETED! Best validation loss: {best_val_loss:.4f}")
+    print("="*60)
+
+    print("\nLoading best model for inference...")
+    model.load_state_dict(torch.load(config.MODEL_SAVE_PATH))
+    model.eval()
+    print("✓ Best model loaded")
+
+    print("\nMaking predictions on test data...")
+    predictions = []
+
+    with torch.no_grad():
+        for batch in tqdm(test_loader, desc="Predicting"):
+            input_ids = batch['input_ids'].to(config.DEVICE)
+            attention_mask = batch['attention_mask'].to(config.DEVICE)
+            outputs = model(input_ids, attention_mask)
+            predictions.append(outputs.cpu().numpy())
+
+    predictions = np.vstack(predictions)
+    print(f"✓ Predictions shape: {predictions.shape}")
+
+    submission = sample_submission.copy()
+    submission['winner_model_a'] = predictions[:, 0]
+    submission['winner_model_b'] = predictions[:, 1]
+    submission['winner_tie'] = predictions[:, 2]
+
+    submission.to_csv(config.SUBMISSION_PATH, index=False)
+
+    print("\n" + "="*60)
+    print("SUBMISSION FILE CREATED")
+    print("="*60)
+    print(f"Saved to: {config.SUBMISSION_PATH}")
+    print(f"Submission shape: {submission.shape}")
+    print(f"\nFirst few predictions:")
+    print(submission.head(10))
+
+    prob_sums = submission[['winner_model_a', 'winner_model_b', 'winner_tie']].sum(axis=1)
+    print(f"\nProbability sums check:")
+    print(f"  Min: {prob_sums.min():.6f}")
+    print(f"  Max: {prob_sums.max():.6f}")
+    print(f"  Mean: {prob_sums.mean():.6f}")
+
+    if abs(prob_sums.mean() - 1.0) < 0.001:
+        print("\n✓ All probabilities sum to ~1.0. Submission is valid!")
+    else:
+        print("\n⚠ WARNING: Probabilities don't sum to 1.0!")
+
+    print("\n" + "="*60)
+    print("LOCAL TRAINING COMPLETED!")
+    print("="*60)
+    print("\nNext steps:")
+    print("1. Review the results in outputs/submission.csv")
+    print("2. If satisfied, copy baseline.py to Kaggle notebook")
+    print("3. Submit the Kaggle notebook to the competition")
+
+if __name__ == '__main__':
+    main()
